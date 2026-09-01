@@ -1,0 +1,8 @@
+curl_cffi
+boto3
+awscli
+python-dotenv
+psycopg2-binary
+cloud-sql-python-connector[pg8000]
+beautifulsoup4
+markdownify

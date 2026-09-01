@@ -1,0 +1,44 @@
+adx_subcategory_id,adx_subcategory_name,canonical_doc_type,observed_count_2yr,notes
+4,General Disclosure | Announcements,general_disclosure,1368,
+5,Board Meeting Disclosure | Board Meeting | Announcement/ Agenda,board_meeting,1135,
+4,General Disclosure | Other,general_disclosure,1026,
+1,Financial Reports | Financial Report,financial_results,870,
+4,General Disclosure | General Press Release,press_release,869,
+5,Board Meeting Disclosure | Board Meeting | Annual Assembly Meeting Result,shareholder_meeting,652,"Despite 'Board Meeting' parent label, this is an AGM outcome"
+5,Board Meeting Disclosure | Board Meeting | Results/ Outcome,board_meeting,579,
+1,Financial Reports | Management Discussion and Analysis Report,financial_results,441,
+4,General Disclosure | FACT Sheet,business_updates,434,"NEEDS USER INPUT: periodic company snapshot, mapped to business_updates as closest fit"
+2,Other,other,326,
+1,Financial Reports | Financial Press Release,financial_results,288,
+3,Assembly Meeting Disclosure | AGM | Invitation,shareholder_meeting,232,
+1,Financial Reports | Summary of the Financial Statements,financial_results,195,
+1,Financial Reports | Integrated Report,annual_report,170,
+5,Board Meeting Disclosure | Board Meeting | By Circulation,board_meeting,158,Board resolution passed by circulation
+1,Financial Reports | Preliminary Results,financial_results,132,
+3,Assembly Meeting Disclosure | AGM | Minutes,shareholder_meeting,131,
+1,Financial Reports | Management Report,financial_results,126,
+1,Financial Reports | Board of Directors Report / Management Report,financial_results,124,
+1,Financial Reports | Corporate Governance Report,regulatory_compliance,104,
+1,Financial Reports | Sustainability Report,other,96,NEEDS USER INPUT: no ESG/sustainability canonical type exists; closest candidate is annual_report
+1,Financial Reports | Report of accumulated  losses,regulatory_compliance,70,"UAE-specific statutory disclosure (accumulated losses vs capital threshold), not routine earnings"
+4,General Disclosure | Article of Association,regulatory_compliance,50,
+4,General Disclosure | Article of Association Amendment ,regulatory_compliance,36,
+3,Assembly Meeting Disclosure | GAM | Invitation,shareholder_meeting,32,"GAM = General Assembly Meeting, i.e. EGM"
+5,Board Meeting Disclosure | Board Meeting | Postpone meeting,board_meeting,32,
+3,Assembly Meeting Disclosure | GAM | Minutes,shareholder_meeting,28,
+4,General Disclosure | Listing Prospectus,fundraising,26,
+4,General Disclosure | Elections (Board Members),management_change,22,
+4,General Disclosure | Key Investor Information Document,regulatory_compliance,21,KIID — standard fund regulatory doc
+3,Assembly Meeting Disclosure | AGM | Postpone meeting,shareholder_meeting,19,
+3,Assembly Meeting Disclosure | AGM | General Assembly Meeting,shareholder_meeting,17,
+4,General Disclosure | Subscription Prospectus,fundraising,14,
+8,General Disclosure | Issuer Disclosures,general_disclosure,14,
+4,General Disclosure | Prospectus,fundraising,12,
+8,General Disclosure | Bond Sukuk Disclosures,general_disclosure,11,Debt-market (bond/sukuk) issuer disclosures
+8,General Disclosure | FACT Sheet,business_updates,8,same as id=4 FACT Sheet
+4,General Disclosure | Announcements Regarding Unclaimed Cash Dividends of Shareholders,corporate_action,5,
+9,Financial Statement | Financial Report,financial_results,4,
+3,Assembly Meeting Disclosure | GAM | Postpone meeting,shareholder_meeting,4,
+8,General Disclosure | Listing Prospectus,fundraising,4,
+3,Assembly Meeting Disclosure | AGM | Amendment,shareholder_meeting,3,
+4,General Disclosure | Company's Board of Directors Report for listing,general_disclosure,1,"NEEDS USER INPUT: only 1 occurrence, listing-related — could be fundraising instead"
