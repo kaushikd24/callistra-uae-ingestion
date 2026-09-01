@@ -1,10 +1,10 @@
 # Callistra UAE Ingestion
 
 Ingests stock-exchange disclosures for UAE-listed companies into Callistra.
-Scope, in order: **ADX** → **Nasdaq Dubai** → **DFM** — all three built and
-tested end-to-end. No cross-exchange de-dupe (see "Dual/triple listings"
-below) — each exchange's pipeline ingests independently. Deployment not yet
-done for any of the three (deferred until explicitly requested).
+Scope, in order: **ADX** → **Nasdaq Dubai** → **DFM** — all three built, tested
+end-to-end, and **deployed live** (see "Deployment" below). No cross-exchange
+de-dupe (see "Dual/triple listings" below) — each exchange's pipeline ingests
+independently.
 
 Read `new_ingestion_guidelines.md` and `new_stock_exchange_guidelines.md` first —
 they're the project-wide contract this repo implements. This file is UAE/repo-specific
@@ -99,15 +99,67 @@ a backfill.
 
 ## Status
 
-- **ADX**: live pipeline built and tested end-to-end (real fetch → S3 upload → DB write,
-  dedupe verified on re-run). 10 real disclosures ingested during testing (legitimate
-  production documents, left in place). Not yet deployed to the VM — deployment is
-  deferred until Nasdaq Dubai is also done, per user instruction.
-- **Nasdaq Dubai**: live pipeline built and tested end-to-end, same as ADX (3 real
-  disclosures ingested during testing — 2 PDF, 1 HTML — dedupe + cutoff-date filtering
-  both verified on re-run). Not yet deployed.
-- **DFM**: live pipeline built and tested end-to-end (7 real disclosures ingested during
-  testing across two runs; dedupe verified). Not yet deployed.
+All three exchanges are deployed and running live on the ingestion VM as of
+2026-09-01. See "Deployment" below for how, and per-exchange history:
+
+- **ADX**: built and tested locally (real fetch → S3 upload → DB write, dedupe
+  verified on re-run), then deployed. First production cycle ingested 6 more
+  real documents on top of the 10 from local testing (16 total).
+- **Nasdaq Dubai**: built and tested locally (3 real disclosures — 2 PDF, 1 HTML —
+  dedupe + cutoff-date filtering both verified), then deployed. First production
+  cycle found 0 new (everything in its latest-100 window was already ingested
+  during local testing against the same prod DB).
+- **DFM**: built and tested locally (7 real disclosures across two local runs,
+  dedupe verified), then deployed. First production cycle found 0 new, same
+  reason as Nasdaq Dubai.
+
+## Deployment
+
+Dokku app **`callistra-uae-ingestion`** on the shared ingestion VM
+(`48.217.83.220`), outbound-only (no port, no domain). One Dockerfile, one
+image, three independent Procfile process types — not a single unified
+runner — because the three pipelines already had clean separate `main()`
+entrypoints and independent failure modes / poll cadences worth keeping
+isolated (mirrors the `callistra-news-rss` precedent of multiple named
+process types in one app, rather than `callistra-regulatory-ingestion`'s
+single-runner-cycles-through-sources pattern — both exist elsewhere in this
+infra; picked based on what this repo's code already looked like, not a
+house-wide rule):
+
+```
+adx:         python -m adx_pipeline.ingest
+nasdaqdubai: python -m nasdaq_dubai_pipeline.ingest
+dfm:         python -m dfm_pipeline.ingest
+```
+
+Each runs its own `while True: run_once(); sleep(3600)` loop — hourly polling,
+per `new_stock_exchange_guidelines.md`. All three were scaled from the default
+`count=0` (Dokku's behavior for any non-`web` process type on first deploy) to
+`count=1` immediately after the first push:
+
+```bash
+ssh azureuser@48.217.83.220 "sudo dokku ps:scale callistra-uae-ingestion adx=1 nasdaqdubai=1 dfm=1"
+```
+
+Env vars pushed via `push-env.sh` (curated, not the whole shared `.env`):
+`GCLOUD_ADC_B64`, `CALLISTRA_DB_INSTANCE_CONNECTION_NAME`, `CALLISTRA_DB_NAME`,
+`CALLISTRA_DB_USER`, `CALLISTRA_DB_PASSWORD`, `AWS_ACCESS_KEY_ID`,
+`AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION` — everything `analytics_db/db.py`
+needs (Cloud SQL connector auth + DB identity) plus boto3's implicit AWS env
+vars (S3 uploads; boto3 never appears in an `os.getenv` grep since it reads
+these itself, easy to miss when curating the var list).
+
+Verified live, not just "build succeeded": `docker ps` showed all three
+containers `Up` (not exited/restarting) after scaling, and `dokku logs -p
+<process>` showed real per-document `ingested: symbol=... type=...` lines
+and a `cycle complete: N new documents` line for each — not just boot
+messages. Cross-checked against the DB directly (`SELECT source_table,
+COUNT(*) ... GROUP BY source_table`) to confirm the row counts matched
+what each process's logs claimed.
+
+Two remotes on this repo: `origin` (GitHub, `kaushikd24/callistra-uae-ingestion`)
+and `dokku` (`dokku@48.217.83.220:callistra-uae-ingestion`) — pushing to one
+never touches the other; both were pushed for this deploy.
 
 ## Nasdaq Dubai pipeline (`nasdaq_dubai_pipeline/`)
 
