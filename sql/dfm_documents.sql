@@ -19,6 +19,12 @@ CREATE TABLE IF NOT EXISTS dfm_documents (
     issuer                text,
     issuer_ar              text,
     isin                  text,  -- not in the API response; joined from company_mapping_full_with_gics_no_id.csv by symbol
+
+    -- Resolved via the standard ticker+MIC path (resolve_equity_v6 trigger,
+    -- primary_mic='XDFM' written source-authoritatively). Denormalized copy
+    -- of documents.callistra_eq_id.
+    callistra_eq_id       text,
+
     headline               text,
     announcement_type       text,
 

@@ -83,7 +83,39 @@ explicit mandate (never parallelize this across exchanges):
     retries with backoff, same pattern already used in `dfm_pipeline`.
   - Backfilled all 9 existing production documents (5 resolved, 4 correctly
     left unresolved). Zero sidecar/documents mismatches.
-- **DFM — not started.** Sequenced after Nasdaq Dubai.
+- **DFM — done.** Unlike Nasdaq Dubai, DFM's API gives a real ticker
+  (`issuer_symbol`), so the standard ticker+MIC path applies directly — no
+  curated mapping CSV needed here. Registered `DFM → XDFM` in
+  `exchange_mic_aliases` (generic, safe — mirrors ADX) and `dfm_pipeline/ingest.py`
+  now writes `primary_mic='XDFM'` source-authoritatively, threading the
+  trigger-resolved `callistra_eq_id` into `dfm_documents.callistra_eq_id`
+  (denormalized copy, `sql/dfm_documents.sql` updated). Checked all 12 unique
+  tickers seen in production against live Postgres `XDFM` listings:
+  - 9/12 (`DTC`, `EMPOWER`, `MAZAYA`, `MKHZN`, `NIND`, `ORIENT`, `SUKOON`,
+    `TAALEEM`, `TALABAT`) already had an exact `(XDFM, ticker)` listing —
+    resolved with zero new data needed. `MAZAYA`/`MKHZN`/`NIND` are genuine
+    dual listings with Kuwait (KSE) under the same `eq_id`, correctly
+    disambiguated by MIC alone, same pattern as ADX's `ORAS`/Nasdaq Dubai case.
+  - `CHAE`/`CHAESHIN` (Lunate S&P UAE ETFs) have zero footprint in v6 —
+    correctly out of equity scope, same as ADX's fund tickers; left unresolved.
+  - `ETIHADENERGY` (Etihad Energy Holding PJSC) was a real gap: no `XDFM`
+    listing existed for that ticker, but entity `EQ0024649` already existed
+    under ticker `GULFNAV` ("Gulf Navigation Holding PJSC") with
+    `equity_entities_v6.csv`'s `legal_name` already updated to
+    `ETIHAD ENERGY HOLDING PJSC` (exact match) and an unchanged
+    `share_class_figi` — a company rename/ticker-change, not a new entity.
+    Couldn't independently corroborate via the ISIN→FIGI bridge (DFM's API
+    gives no ISIN, and OpenFIGI ticker lookups under Dubai exchange codes
+    returned nothing) — surfaced to the user explicitly; **user directed
+    adding the listing** rather than leaving it unresolved. Added an
+    `(XDFM, ETIHADENERGY)` listing for `EQ0024649` (Postgres +
+    `equity_listings_v6.csv`), keeping the old `GULFNAV` listing intact per
+    rule 2 (never overwrite raw source data).
+  - Backfilled all 19 existing production documents: 17/19 resolved
+    (including both pre-existing `ETIHADENERGY` rows, which picked up
+    `EQ0024649` once `primary_mic` was backfilled — the trigger treats a
+    changed `primary_mic` on UPDATE as explicitly supplied and re-resolves),
+    2 correctly left unresolved (the ETFs). Zero sidecar/documents mismatches.
 
 ## Root files
 

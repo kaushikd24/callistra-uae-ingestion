@@ -44,6 +44,12 @@ SOURCE_TABLE = "dfm_documents"
 SOURCE_SYSTEM = "dfm"
 POLL_INTERVAL_SECONDS = 3600
 
+# DFM's venue is never ambiguous — written source-authoritatively so the
+# resolve_equity_v6 trigger resolves on exact (mic, ticker), same as ADX's
+# XADS. Registered as a generic exchange_mic_alias too (DFM -> XDFM) for
+# consistency, though the direct write already covers the resolution path.
+PRIMARY_MIC = "XDFM"
+
 # Same baseline as ADX and Nasdaq Dubai — Monday of the week this pipeline
 # went live. Not recomputed on every run; see BACKFILL GUIDELINES.
 CUTOFF_DATE = datetime(2026, 8, 31, tzinfo=timezone.utc)
@@ -126,6 +132,7 @@ def _build_rows(item: dict, resource: dict, blob_path: str, isin: str | None,
         "primary_symbol": symbol,
         "symbols": [symbol] if symbol else [],
         "exchange": "DFM",
+        "primary_mic": PRIMARY_MIC,
         "country": "United Arab Emirates",
         "country_code": "AE",
         "translation_required": False,
@@ -145,15 +152,15 @@ def _persist(db, sidecar_row: dict, documents_row: dict) -> None:
                     source_table, source_row_id, source_system, source_type,
                     doc_name, blob_path, ingestion_status, canonical_doc_type,
                     entity_type, published_at, title, company_name,
-                    primary_symbol, symbols, exchange, country, country_code,
+                    primary_symbol, symbols, exchange, primary_mic, country, country_code,
                     translation_required, raw_category, raw_subcategory
                 ) VALUES (
                     %s, %s, %s, %s,
                     %s, %s, %s, %s,
                     %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
                     %s, %s, %s
-                ) RETURNING id
+                ) RETURNING id, callistra_eq_id
                 """,
                 (
                     documents_row["source_table"], documents_row["source_row_id"],
@@ -163,23 +170,25 @@ def _persist(db, sidecar_row: dict, documents_row: dict) -> None:
                     documents_row["entity_type"], documents_row["published_at"],
                     documents_row["title"], documents_row["company_name"],
                     documents_row["primary_symbol"], documents_row["symbols"],
-                    documents_row["exchange"], documents_row["country"],
+                    documents_row["exchange"], documents_row["primary_mic"], documents_row["country"],
                     documents_row["country_code"], documents_row["translation_required"],
                     documents_row["raw_category"], documents_row["raw_subcategory"],
                 ),
             )
-            document_id = cur.fetchone()[0]
+            document_id, resolved_eq_id = cur.fetchone()
 
             cur.execute(
                 """
                 INSERT INTO dfm_documents (
                     id, document_id, dfm_id, issuer_symbol, issuer, issuer_ar, isin,
+                    callistra_eq_id,
                     headline, announcement_type, report_interval, integrated_period,
                     integrated_language, integrated_report_type, dividends_payment_date,
                     publication_date, resource_type, resource_category,
                     resource_description, resource_r_path, raw_response
                 ) VALUES (
                     %s, %s, %s, %s, %s, %s, %s,
+                    %s,
                     %s, %s, %s, %s,
                     %s, %s, %s,
                     %s, %s, %s,
@@ -190,6 +199,7 @@ def _persist(db, sidecar_row: dict, documents_row: dict) -> None:
                     sidecar_row["id"], document_id, sidecar_row["dfm_id"],
                     sidecar_row["issuer_symbol"], sidecar_row["issuer"], sidecar_row["issuer_ar"],
                     sidecar_row["isin"],
+                    resolved_eq_id,
                     sidecar_row["headline"], sidecar_row["announcement_type"],
                     sidecar_row["report_interval"], sidecar_row["integrated_period"],
                     sidecar_row["integrated_language"], sidecar_row["integrated_report_type"],
