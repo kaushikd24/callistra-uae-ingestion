@@ -7,8 +7,49 @@ de-dupe (see "Dual/triple listings" below) — each exchange's pipeline ingests
 independently.
 
 Read `new_ingestion_guidelines.md` and `new_stock_exchange_guidelines.md` first —
-they're the project-wide contract this repo implements. This file is UAE/repo-specific
-notes only.
+they're the project-wide contract this repo implements. Also read
+`internal_equity_id_usage_guidelines.md` before touching anything equity-ID
+related (see "Equity-ID resolution" below) — it governs `callistra_eq_id`,
+which the guideline itself describes as the sole source of truth for entity
+identity across the whole product. This file is UAE/repo-specific notes only.
+
+## Equity-ID resolution (`callistra_eq_id`)
+
+`callistra_equity.*` (schema, tables, `resolve_equity_v6()` function, and the
+`documents_resolve_equity_v6` BEFORE INSERT/UPDATE trigger) is shared
+platform infrastructure, already live in production — this repo does not own
+or build it, only feeds it correctly. `equity_entities_v6.csv` /
+`equity_listings_v6.csv` (root) are the versioned master-data snapshot; the
+live `callistra_equity.listings`/`entities` tables are the actual runtime
+source the trigger queries and can drift ahead of the CSV snapshot (as they
+did here — always check Postgres directly, not just the CSV, before
+concluding something is missing).
+
+Being tackled **strictly one exchange at a time**, per the guideline's
+explicit mandate (never parallelize this across exchanges):
+
+- **ADX — done.** Registered `ADX → XADS` in `callistra_equity.exchange_mic_aliases`
+  (generic alias — safe, "ADX" has no other exchange meaning). Cross-checked
+  all 92 official ADX equities against v6: 87/92 already mapped; 4 of the 5
+  gaps were delisted rights-issue instruments (not currently ingested, low
+  priority); the 5th, `GFH` (GFH Bank B.S.C.), was a real gap — it already
+  existed as entity `EQ0021000` (listed on XKUW/XBAH/XDFM) just missing the
+  ADX listing, so a listing row was added rather than minting a new ID (added
+  to both live Postgres and `equity_listings_v6.csv` to keep the versioned
+  artifact in sync). `adx_pipeline/ingest.py` now writes `primary_mic='XADS'`
+  source-authoritatively (ADX's venue is never ambiguous) and threads the
+  trigger-resolved `callistra_eq_id` back into `adx_documents.callistra_eq_id`
+  (a denormalized copy of the documents-table source of truth, added per the
+  guideline's sidecar-update instruction). Backfilled all existing production
+  rows: 35/58 resolved to a real `eq_id`; the other 23 are genuine fund/ETF
+  tickers (ADX instrument_type='Fund') correctly out of equity scope — v6 has
+  no concept of them and shouldn't. Zero sidecar/documents mismatches verified.
+- **Nasdaq Dubai — in progress.** Fundamentally different problem: the API
+  exposes no ticker anywhere (see "No primary_symbol" above), so the standard
+  ticker+MIC resolver path cannot apply. Requires a source-authoritative,
+  ISIN-based approach instead, using the ISIN already captured per document
+  in `nasdaq_dubai_documents.isin`.
+- **DFM — not started.** Sequenced after Nasdaq Dubai.
 
 ## Root files
 
