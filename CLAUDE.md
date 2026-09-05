@@ -44,11 +44,45 @@ explicit mandate (never parallelize this across exchanges):
   rows: 35/58 resolved to a real `eq_id`; the other 23 are genuine fund/ETF
   tickers (ADX instrument_type='Fund') correctly out of equity scope — v6 has
   no concept of them and shouldn't. Zero sidecar/documents mismatches verified.
-- **Nasdaq Dubai — in progress.** Fundamentally different problem: the API
-  exposes no ticker anywhere (see "No primary_symbol" above), so the standard
-  ticker+MIC resolver path cannot apply. Requires a source-authoritative,
-  ISIN-based approach instead, using the ISIN already captured per document
-  in `nasdaq_dubai_documents.isin`.
+- **Nasdaq Dubai — done.** No ticker exists anywhere in the API, so
+  `resolve_equity_v6()` can never apply (it short-circuits to `missing_ticker`
+  the instant `primary_symbol` is null, before even looking at MIC/exchange).
+  Built a fully source-authoritative alternative instead:
+  `nasdaq_dubai_pipeline/equity_mapping.py` loads a small curated
+  `nasdaq_dubai_isin_eq_id_mapping.csv` (ISIN → `eq_id`), and `ingest.py`
+  writes `callistra_eq_id` directly at insert time — the trigger's
+  `IF NEW.callistra_eq_id IS NOT NULL THEN ... RETURN NEW` short-circuit means
+  a source-supplied ID is never second-guessed. Every mapping entry was
+  confirmed via the exact bridge the guideline recommends for this case
+  (Section 6.1): OpenFIGI's public ISIN→FIGI mapping API, then checked
+  against `callistra_equity.entities.share_class_figi`.
+  - `Depa PLC` (ISIN AEDFXA0NFP81 → FIGI BBG001T264B4) and `ENBD REIT (CEIC)
+    PLC` (AEDFXA1CN004 → BBG00G59X1P3): confirmed absent from v6 by FIGI, not
+    just missing a listing — minted new entities `EQ0058904`/`EQ0058905` and
+    added `DIFX` listings (Postgres + `equity_listings_v6.csv`).
+  - `Hikma Pharmaceuticals PLC`'s Nasdaq Dubai listing resolves to a GDR
+    (FIGI `BBG001SQ1J24`) — genuinely different from the existing ordinary-
+    share entity's FIGI (`BBG001SNK879`), which is exactly the ADR/GDR case
+    Section 6.5 says never to auto-merge by name. Surfaced to the user
+    explicitly; **user directed linking it to the existing `EQ0024367`**
+    rather than minting a separate GDR entity — recorded in the mapping CSV's
+    `notes` column so the reasoning isn't lost.
+  - Bond/sukuk SPV issuers (`Arada Sukuk Limited`, `Bank of China (Dubai)
+    Branch`) and the exchange's own circulars correctly stay unresolved —
+    not equities, logged as `WARNING ... onboarding candidate` rather than
+    guessed at.
+  - MIC used: `DIFX` (Nasdaq Dubai's ISO 10383 code retained from its
+    pre-rebrand name, Dubai International Financial Exchange) — flagged to
+    the user as general reference knowledge, not verified against any of our
+    own data sources, since nothing in v6 or Postgres referenced it before
+    this work.
+  - Found and fixed a real, previously-undocumented reliability bug while
+    testing this: `feeds.nasdaqdubai.com`'s detail endpoint occasionally
+    returns `200` with an empty body under rapid sequential calls, which
+    previously crashed the whole poll cycle uncaught. `client.py` now
+    retries with backoff, same pattern already used in `dfm_pipeline`.
+  - Backfilled all 9 existing production documents (5 resolved, 4 correctly
+    left unresolved). Zero sidecar/documents mismatches.
 - **DFM — not started.** Sequenced after Nasdaq Dubai.
 
 ## Root files
