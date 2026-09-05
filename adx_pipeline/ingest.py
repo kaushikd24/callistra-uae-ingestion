@@ -40,6 +40,15 @@ SOURCE_TABLE = "adx_documents"
 SOURCE_SYSTEM = "adx"
 POLL_INTERVAL_SECONDS = 3600  # hourly, per new_stock_exchange_guidelines.md
 
+# ADX's venue is unambiguous and permanently known, so we write it
+# source-authoritatively rather than relying only on the
+# callistra_equity.exchange_mic_aliases fallback ("ADX" -> "XADS"), per
+# internal_equity_id_usage_guidelines.md section 3.2 (target state for
+# exchange repos). callistra_eq_id itself is left to the documents trigger
+# (resolve_document_equity_v6) since we have no evidence beyond ticker+MIC
+# that it doesn't already use.
+PRIMARY_MIC = "XADS"
+
 # Fixed at pipeline setup time (Monday of the week this pipeline went live),
 # per BACKFILL GUIDELINES in new_stock_exchange_guidelines.md — the live
 # poller must not silently backfill everything published before it existed.
@@ -125,6 +134,7 @@ def _build_rows(record: dict, issuer_row: dict | None, blob_path: str) -> tuple[
         "primary_symbol": symbol,
         "symbols": [symbol],
         "exchange": "ADX",
+        "primary_mic": PRIMARY_MIC,
         "country": "United Arab Emirates",
         "country_code": "AE",
         "translation_required": False,
@@ -146,15 +156,15 @@ def _persist(db, sidecar_row: dict, documents_row: dict) -> None:
                     source_table, source_row_id, source_system, source_type,
                     doc_name, blob_path, ingestion_status, canonical_doc_type,
                     entity_type, published_at, title, company_name,
-                    primary_symbol, symbols, exchange, country, country_code,
+                    primary_symbol, symbols, exchange, primary_mic, country, country_code,
                     translation_required, raw_category, raw_subcategory
                 ) VALUES (
                     %s, %s, %s, %s,
                     %s, %s, %s, %s,
                     %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
                     %s, %s, %s
-                ) RETURNING id
+                ) RETURNING id, callistra_eq_id
                 """,
                 (
                     documents_row["source_table"], documents_row["source_row_id"],
@@ -164,23 +174,23 @@ def _persist(db, sidecar_row: dict, documents_row: dict) -> None:
                     documents_row["entity_type"], documents_row["published_at"],
                     documents_row["title"], documents_row["company_name"],
                     documents_row["primary_symbol"], documents_row["symbols"],
-                    documents_row["exchange"], documents_row["country"],
+                    documents_row["exchange"], documents_row["primary_mic"], documents_row["country"],
                     documents_row["country_code"], documents_row["translation_required"],
                     documents_row["raw_category"], documents_row["raw_subcategory"],
                 ),
             )
-            document_id = cur.fetchone()[0]
+            document_id, resolved_eq_id = cur.fetchone()
 
             cur.execute(
                 """
                 INSERT INTO adx_documents (
                     id, document_id, adx_content_id, entity_symbol, entity_name_en,
-                    entity_name_ar, isin, title_en, title_ar, simple_title_en,
+                    entity_name_ar, isin, callistra_eq_id, title_en, title_ar, simple_title_en,
                     category_id, category_name_en, subcategory_id, subcategory_name_en,
                     published_date, event_date, pdf_url_en, pdf_url_ar, ex_para, raw_response
                 ) VALUES (
                     %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s
                 )
@@ -188,7 +198,7 @@ def _persist(db, sidecar_row: dict, documents_row: dict) -> None:
                 (
                     sidecar_row["id"], document_id, sidecar_row["adx_content_id"],
                     sidecar_row["entity_symbol"], sidecar_row["entity_name_en"],
-                    sidecar_row["entity_name_ar"], sidecar_row["isin"],
+                    sidecar_row["entity_name_ar"], sidecar_row["isin"], resolved_eq_id,
                     sidecar_row["title_en"], sidecar_row["title_ar"], sidecar_row["simple_title_en"],
                     sidecar_row["category_id"], sidecar_row["category_name_en"],
                     sidecar_row["subcategory_id"], sidecar_row["subcategory_name_en"],

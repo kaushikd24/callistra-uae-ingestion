@@ -16,6 +16,11 @@ CREATE TABLE IF NOT EXISTS adx_documents (
     entity_name_ar        text,
     isin                 text,
 
+    -- Denormalized copy of documents.callistra_eq_id (the FK-constrained
+    -- source of truth — see internal_equity_id_usage_guidelines.md) for
+    -- sidecar-local querying/audit without a join.
+    callistra_eq_id       text,
+
     title_en             text,
     title_ar             text,
     simple_title_en       text,
