@@ -1,0 +1,4 @@
+isin,eq_id,issuer_name,figi,method,notes
+AEDFXA0NFP81,EQ0058904,Depa PLC,BBG001T264B4,isin_figi_bridge,New entity minted 2026-09 -- confirmed absent from v6 entities via OpenFIGI share_class_figi lookup before minting
+AEDFXA1CN004,EQ0058905,ENBD REIT (CEIC) PLC,BBG00G59X1P3,isin_figi_bridge,New entity minted 2026-09 -- confirmed absent from v6 entities via OpenFIGI share_class_figi lookup before minting
+US4312882081,EQ0024367,Hikma Pharmaceuticals-GDR,BBG001SQ1J24,isin_figi_bridge_user_directed,GDR FIGI differs from Hikma ordinary-share FIGI BBG001SNK879 (genuinely a different security per internal_equity_id_usage_guidelines.md section 6.5) -- user explicitly directed linking to the existing ordinary-share entity EQ0024367 rather than minting a separate GDR entity

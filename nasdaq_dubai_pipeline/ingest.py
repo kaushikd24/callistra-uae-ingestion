@@ -36,6 +36,7 @@ from datetime import datetime, timezone
 import boto3
 
 from nasdaq_dubai_pipeline.client import NasdaqDubaiClient
+from nasdaq_dubai_pipeline.equity_mapping import load_isin_to_eq_id, resolve as resolve_eq_id
 from nasdaq_dubai_pipeline.html_to_mmd import html_body_to_mmd
 from nasdaq_dubai_pipeline.rules import classify, is_exchange_or_regulator
 
@@ -46,6 +47,13 @@ S3_BUCKET = "callistra-uae-documents"
 SOURCE_TABLE = "nasdaq_dubai_documents"
 SOURCE_SYSTEM = "nasdaq_dubai"
 POLL_INTERVAL_SECONDS = 3600
+
+# Nasdaq Dubai's venue is unambiguous even though it never gives us a ticker;
+# ISO MIC retained from its pre-rebrand name, Dubai International Financial
+# Exchange. callistra_eq_id resolution can't use the generic ticker+MIC
+# trigger here (no ticker exists) — see equity_mapping.py for the
+# ISIN-based, source-authoritative alternative.
+PRIMARY_MIC = "DIFX"
 
 # Same baseline as ADX — Monday of the week this pipeline went live. Not
 # recomputed on every run; see new_stock_exchange_guidelines.md BACKFILL GUIDELINES.
@@ -106,17 +114,22 @@ def _prepare_pdf_document(client: NasdaqDubaiClient, detail: dict, resource: dic
 
 def _build_rows(item: dict, detail: dict, blob_path: str, content_kind: str,
                  raw_html_path: str | None, resource: dict | None,
-                 canonical_doc_type: str) -> tuple[dict, dict]:
+                 canonical_doc_type: str, isin_map: dict[str, str]) -> tuple[dict, dict]:
     sidecar_id = uuid.uuid4()
     issuer = detail.get("issuer") or item.get("issuer")
     published_at = _parse_nd_date(detail.get("publication_date") or item.get("publication_date"))
     entity_type = "government" if is_exchange_or_regulator(issuer) else "company"
+    isin = (detail.get("isin") or "").strip() or None
+    eq_id = resolve_eq_id(isin, isin_map)
+    if isin and eq_id is None:
+        log.warning("no eq_id mapping for isin=%r (issuer=%s) — onboarding candidate", isin, issuer)
 
     sidecar_row = {
         "id": sidecar_id,
         "nd_id": item["id"],
         "issuer": issuer,
-        "isin": (detail.get("isin") or "").strip() or None,
+        "isin": isin,
+        "callistra_eq_id": eq_id,
         "headline": detail.get("headline") or item.get("headline"),
         "seq_no": detail.get("seq_no"),
         "publication_date": published_at,
@@ -152,6 +165,8 @@ def _build_rows(item: dict, detail: dict, blob_path: str, content_kind: str,
         "primary_symbol": None,  # Nasdaq Dubai's API never exposes a ticker
         "symbols": [],
         "exchange": "NASDAQ_DUBAI",
+        "primary_mic": PRIMARY_MIC,
+        "callistra_eq_id": eq_id,  # source-authoritative; see equity_mapping.py
         "country": "United Arab Emirates",
         "country_code": "AE",
         "translation_required": False,
@@ -171,15 +186,15 @@ def _persist(db, sidecar_row: dict, documents_row: dict) -> None:
                     source_table, source_row_id, source_system, source_type,
                     doc_name, blob_path, ocr_path, ocr_completed_at, ingestion_status, canonical_doc_type,
                     entity_type, published_at, title, company_name,
-                    primary_symbol, symbols, exchange, country, country_code,
+                    primary_symbol, symbols, exchange, primary_mic, callistra_eq_id, country, country_code,
                     translation_required, raw_category, raw_subcategory
                 ) VALUES (
                     %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s
-                ) RETURNING id
+                ) RETURNING id, callistra_eq_id
                 """,
                 (
                     documents_row["source_table"], documents_row["source_row_id"],
@@ -190,28 +205,29 @@ def _persist(db, sidecar_row: dict, documents_row: dict) -> None:
                     documents_row["entity_type"], documents_row["published_at"],
                     documents_row["title"], documents_row["company_name"],
                     documents_row["primary_symbol"], documents_row["symbols"],
-                    documents_row["exchange"], documents_row["country"],
+                    documents_row["exchange"], documents_row["primary_mic"], documents_row["callistra_eq_id"],
+                    documents_row["country"],
                     documents_row["country_code"], documents_row["translation_required"],
                     documents_row["raw_category"], documents_row["raw_subcategory"],
                 ),
             )
-            document_id = cur.fetchone()[0]
+            document_id, resolved_eq_id = cur.fetchone()
 
             cur.execute(
                 """
                 INSERT INTO nasdaq_dubai_documents (
-                    id, document_id, nd_id, issuer, isin, headline, seq_no,
+                    id, document_id, nd_id, issuer, isin, callistra_eq_id, headline, seq_no,
                     publication_date, content_kind, raw_html_path, resource_type,
                     resource_category, resource_description, resource_r_path, raw_response
                 ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s,
                     %s, %s, %s, %s
                 )
                 """,
                 (
                     sidecar_row["id"], document_id, sidecar_row["nd_id"], sidecar_row["issuer"],
-                    sidecar_row["isin"], sidecar_row["headline"], sidecar_row["seq_no"],
+                    sidecar_row["isin"], resolved_eq_id, sidecar_row["headline"], sidecar_row["seq_no"],
                     sidecar_row["publication_date"], sidecar_row["content_kind"],
                     sidecar_row["raw_html_path"], sidecar_row["resource_type"],
                     sidecar_row["resource_category"], sidecar_row["resource_description"],
@@ -224,6 +240,7 @@ def _persist(db, sidecar_row: dict, documents_row: dict) -> None:
 
 def run_once(take: int, dry_run: bool) -> int:
     client = NasdaqDubaiClient()
+    isin_map = load_isin_to_eq_id()
 
     db = None
     if not dry_run:
@@ -283,7 +300,7 @@ def run_once(take: int, dry_run: bool) -> int:
 
         sidecar_row, documents_row = _build_rows(
             item, detail, blob_path, content_kind, raw_html_path,
-            resources[0] if resources else None, canonical_doc_type,
+            resources[0] if resources else None, canonical_doc_type, isin_map,
         )
 
         if dry_run:

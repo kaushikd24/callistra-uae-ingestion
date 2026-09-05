@@ -14,6 +14,7 @@ Three hosts, three purposes:
 from __future__ import annotations
 
 import json
+import time
 
 from curl_cffi import requests as curl_requests
 
@@ -21,20 +22,35 @@ CANDI_BASE = "https://api.nasdaqdubai.com/candi/v1"
 FEEDS_BASE = "https://feeds.nasdaqdubai.com/apps/sso"
 
 
-def _parse_json(text: str) -> dict:
+def _parse_json(text: str) -> dict | None:
     # responses are served with a leading UTF-8 BOM
-    return json.loads(text.lstrip("﻿"))
+    text = text.lstrip("﻿")
+    if not text.strip():
+        return None
+    return json.loads(text)
 
 
 class NasdaqDubaiClient:
-    def __init__(self, timeout: int = 30) -> None:
+    def __init__(self, timeout: int = 30, max_retries: int = 3) -> None:
         self._timeout = timeout
+        self._max_retries = max_retries
         self._session = curl_requests.Session()
 
     def _get(self, url: str, params: dict | None = None) -> dict:
-        r = self._session.get(url, params=params, impersonate="chrome", timeout=self._timeout)
-        r.raise_for_status()
-        return _parse_json(r.text)
+        # feeds.nasdaqdubai.com occasionally returns a 200 with an empty
+        # body under rapid sequential calls (observed during pipeline
+        # build/testing) — not documented rate limiting, but retrying
+        # clears it every time seen so far.
+        delay = 1.5
+        for attempt in range(self._max_retries):
+            r = self._session.get(url, params=params, impersonate="chrome", timeout=self._timeout)
+            r.raise_for_status()
+            data = _parse_json(r.text)
+            if data is not None:
+                return data
+            time.sleep(delay)
+            delay = min(delay * 1.5, 8.0)
+        raise RuntimeError(f"Nasdaq Dubai API returned empty body after {self._max_retries} retries: {url}")
 
     def fetch_listing(self, skip: int = 0, take: int = 200) -> list[dict]:
         """id, headline, issuer, publication_date — newest first."""

@@ -23,6 +23,12 @@ CREATE TABLE IF NOT EXISTS nasdaq_dubai_documents (
 
     issuer               text,
     isin                 text,
+
+    -- Resolved source-side via nasdaq_dubai_pipeline/equity_mapping.py
+    -- (ISIN -> FIGI -> eq_id bridge; no ticker exists to feed the generic
+    -- resolve_equity_v6() trigger). Denormalized copy of documents.callistra_eq_id.
+    callistra_eq_id       text,
+
     headline             text,
     seq_no               integer,
     publication_date      timestamptz,

@@ -131298,3 +131298,6 @@ EQ0034150,gics,35159,MTN Rwandacell PLC,MTNR,,RW,,name_verified_manual_review
 EQ0058454,gics,29890,Vicem Hai Van Cement JSC,HVX,,VN,True,isin_no_figi
 EQ0058760,gics,45893,Viet Nam Land Investment Corp,VNI,,VN,True,isin_no_figi
 EQ0021000,manual_review,,GFH Bank B.S.C.,GFH,XADS,AE,False,name_verified_manual_review
+EQ0058904,manual_review,,Depa PLC,DEPA,DIFX,AE,True,isin_figi_bridge
+EQ0058905,manual_review,,ENBD REIT (CEIC) PLC,ENBDREIT,DIFX,AE,True,isin_figi_bridge
+EQ0024367,manual_review,,Hikma Pharmaceuticals PLC,HIK,DIFX,AE,False,isin_figi_bridge_user_directed
